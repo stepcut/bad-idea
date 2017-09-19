@@ -28,7 +28,7 @@ mkPerceptron :: Int -> IO Neuron
 mkPerceptron numInputs =
   do gen <- newStdGen
      let weights' = take numInputs $ randomRs (-1, 1) gen
-         bias = 1
+         bias = 0
      return $ Neuron (Vector.fromList weights') bias heavisideStep
 
 heavisideStep :: Float -> Float
@@ -42,11 +42,11 @@ evalNeuron (Neuron weights bias activationFunction) inputs =
 
 train :: (Vector Float, Float) -> Neuron -> Neuron
 train (input, expected) neuron =
-  let lr = 0.1
+  let lr = 0.005
       guess = evalNeuron neuron input
       err   = expected - guess
       weights' = (weights neuron) ^+^ (input ^* (err * lr))
-      bias' = (bias neuron) + (err * 1000 * lr)
+      bias' = (bias neuron) + (err * lr)
   in neuron { weights = weights', bias = bias' }
 
 p0 = Neuron (Vector.fromList [6, 2, 2]) (-3) heavisideStep
@@ -55,47 +55,64 @@ p1 = Neuron (Vector.fromList [6, 2, 2]) 5 heavisideStep
 inputs0 :: Vector Float
 inputs0 = Vector.fromList [ 0, 1, 1]
 
-windowRadius = 1000
+windowRadius = 800
 
 window :: Display
 window = InWindow "bad idea" (windowRadius,windowRadius) (10,10)
+
+-- convert from (-1,1) to window coord
+toCoord :: Float -> Float
+toCoord n = n * ( ((fromIntegral windowRadius) - 100) / 2)
 
 background :: Color
 background = white
 
 markerRadius = 5
 
-drawX :: Color -> (Float, Float) -> Picture
-drawX c (x,y) =
-  color c $
-   translate x y $
+drawX :: Picture
+drawX =
+--   color c $
+--   translate x y $
     pictures [ line [(-markerRadius, -markerRadius), (markerRadius, markerRadius)]
              , line [(-markerRadius, markerRadius), (markerRadius, -markerRadius)]
              ]
 
-drawO :: Color -> (Float, Float) -> Picture
-drawO c (x,y) =
-  color c $
-   translate x y $
+drawO :: Picture
+drawO =
+--  color c $
+--   translate x y $
     circle markerRadius
 
 render :: World -> Picture
 render (World neuron trainingData index _) =
-  pictures (center : renderNeuron neuron : [ renderTd td i | (td, i) <- zip trainingData [0..] ])
+  pictures (box : center : renderNeuron neuron : [ renderTd td i | (td, i) <- zip trainingData [0..] ])
   where
     center :: Picture
     center = color black $ circle 5
+    box =  line [ (toCoord (-1), toCoord (-1))
+                , (toCoord (1), toCoord (-1))
+                , (toCoord (1), toCoord 1)
+                , (toCoord (-1), toCoord 1)
+                , (toCoord (-1), toCoord (-1))
+                ]
     renderNeuron :: Neuron -> Picture
     renderNeuron n =
       let m = (weights n ! 0) / (weights n ! 1)
-          y x' = - ((bias n) / (weights n ! 1)) - m * x'
-          x = fromIntegral windowRadius
-      in line [ (-x, y (-x)), (x, y x) ]
+          x = 1
+          y x' = (- ((bias n) / (weights n ! 1))) - m * x'
+      in line [ (toCoord (-x), toCoord $ y (-x)), (toCoord x, toCoord $ y x) ]
+--         line [ (toCoord (-1), toCoord (-1)), (toCoord 1, toCoord 1) ]
     renderTd :: (Vector Float, Float) -> Int -> Picture
     renderTd (inputs, expected) i =
       let guessed = evalNeuron neuron inputs
-          color = if (i == index) then blue else (if guessed == expected then green else red)
-      in if expected >= 0 then drawO color ((inputs ! 0), (inputs ! 1)) else drawX color ((inputs ! 0), (inputs ! 1))
+          c = if (i == index) then blue else (if guessed == expected then green else red)
+          xc = toCoord (inputs ! 0)
+          yc = toCoord (inputs ! 1)
+      in color c $
+          translate xc yc $
+            if expected >= 0
+               then drawO
+               else drawX
 
 fps :: Int
 fps = 120
@@ -112,9 +129,9 @@ initialState =
   do n <- mkPerceptron 2
      g <- newStdGen
      g' <- newStdGen
-     let xs = randomRs (-400, 400::Int) g
-         ys = randomRs (-400, 400::Int) g'
-         td = take 150 $ zipWith (\x y -> (Vector.fromList [fromIntegral x, fromIntegral y], if (y > -(2*x) + 100) then 1 else -1)) xs ys
+     let xs = randomRs (-1, 1::Float) g
+         ys = randomRs (-1, 1::Float) g'
+         td = take 150 $ zipWith (\x y -> (Vector.fromList [x, y], if (y > -(2*x) + 0.1) then 1 else -1)) xs ys
      pure $ World n td 0 False
 
 handleInput :: Event -> World -> World
