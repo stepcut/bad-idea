@@ -14,7 +14,7 @@ import System.Exit (exitSuccess)
 import System.Random (newStdGen, randomIO, randomRIO, randomRs)
 
 -- linear classification
--- 
+--
 
 data Neuron = Neuron
   { weights            :: Vector Float
@@ -22,12 +22,12 @@ data Neuron = Neuron
   , activationFunction :: Float -> Float
   }
 
-type TrainingData = [(Vector Float, Float)]
+type TrainingSet = [(Vector Float, Float)]
 
 mkPerceptron :: Int -> IO Neuron
 mkPerceptron numInputs =
   do gen <- newStdGen
-     let weights' = take numInputs $ randomRs (-1, 1) gen
+     let weights' = take numInputs $ randomRs (-0.1, 0.1) gen
          bias = 0
      return $ Neuron (Vector.fromList weights') bias heavisideStep
 
@@ -41,10 +41,10 @@ evalNeuron (Neuron weights bias activationFunction) inputs =
   activationFunction ((dot inputs weights) + bias)
 
 train :: (Vector Float, Float) -> Neuron -> Neuron
-train (input, expected) neuron =
-  let lr = 0.005
+train (input, target) neuron =
+  let lr = 1 -- 0.005
       guess = evalNeuron neuron input
-      err   = expected - guess
+      err   = target - guess
       weights' = (weights neuron) ^+^ (input ^* (err * lr))
       bias' = (bias neuron) + (err * lr)
   in neuron { weights = weights', bias = bias' }
@@ -85,10 +85,12 @@ drawO =
 
 render :: World -> Picture
 render (World neuron trainingData index _) =
-  pictures (box : center : renderNeuron neuron : [ renderTd td i | (td, i) <- zip trainingData [0..] ])
+  pictures (box : center : xLabel : yLabel : renderNeuron neuron : [ renderTd td i | (td, i) <- zip trainingData [0..] ])
   where
     center :: Picture
-    center = color black $ circle 5
+    center = color black $ pictures $ [ line [ (-5, 0), (5, 0) ], line [ (0, -5), (0, 5) ] ]
+    xLabel = translate (toCoord (-0.1)) (toCoord (-1.1)) $ scale 0.1 0.1 $ Text "Hotness"
+    yLabel = translate (toCoord (-1.1)) (toCoord (-0.1)) $ rotate (-90) $ scale 0.1 0.1 $ Text "$$$"
     box =  line [ (toCoord (-1), toCoord (-1))
                 , (toCoord (1), toCoord (-1))
                 , (toCoord (1), toCoord 1)
@@ -131,8 +133,38 @@ initialState =
      g' <- newStdGen
      let xs = randomRs (-1, 1::Float) g
          ys = randomRs (-1, 1::Float) g'
-         td = take 150 $ zipWith (\x y -> (Vector.fromList [x, y], if (y > -(2*x) + 0.1) then 1 else -1)) xs ys
+         td = take 150 $ zipWith (\x y -> (Vector.fromList [x, y], if (y > -(0.5*x) + 0.3) then 1 else -1)) xs ys
      pure $ World n td 0 False
+
+andState :: IO World
+andState =
+    do n <- mkPerceptron 2
+       let trainingState = [ (Vector.fromList [1,1], 1)
+                           , (Vector.fromList [1, (-1)], (-1))
+                           , (Vector.fromList [(-1), (-1)], (-1))
+                           , (Vector.fromList [(-1), (1)], (-1))
+                           ]
+       pure $ World n trainingState 0 False
+
+orState :: IO World
+orState =
+    do n <- mkPerceptron 2
+       let trainingState = [ (Vector.fromList [1   ,1    ],   1)
+                           , (Vector.fromList [1   , (-1)],  (1))
+                           , (Vector.fromList [(-1), (-1)], (-1))
+                           , (Vector.fromList [(-1), (1) ], (1))
+                           ]
+       pure $ World n trainingState 0 False
+
+xorState :: IO World
+xorState =
+    do n <- mkPerceptron 2
+       let trainingState = [ (Vector.fromList [1   ,1    ],   (-1))
+                           , (Vector.fromList [1   , (-1)],  (1))
+                           , (Vector.fromList [(-1), (-1)], (-1))
+                           , (Vector.fromList [(-1), (1) ], (1))
+                           ]
+       pure $ World n trainingState 0 False
 
 handleInput :: Event -> World -> World
 handleInput event world =
@@ -141,7 +173,7 @@ handleInput event world =
       world { isTraining = not (isTraining world) }
     _ -> world
 
-isTrainingComplete :: Neuron -> TrainingData -> Bool
+isTrainingComplete :: Neuron -> TrainingSet -> Bool
 isTrainingComplete n td =
   all (\(inputs, expected) -> evalNeuron n inputs == expected) td
 
@@ -160,7 +192,7 @@ main :: IO ()
 main =
   do print $ evalNeuron p0 inputs0
      print $ evalNeuron p1 inputs0
-     world <- initialState
+     world <- xorState
      play window background fps world render handleInput update
 
 {-
@@ -180,4 +212,3 @@ data Layer = Layer
 
 type Brain = Vector Layer
 -}
- 
