@@ -5,7 +5,7 @@ let
   inherit (nixpkgs) pkgs;
 
   f = { mkDerivation, attoparsec, attoparsec-binary, base, bytestring
-      , data-binary-ieee754, stdenv, cabal-install, pipes-attoparsec, vector, random, stm
+      , data-binary-ieee754, stdenv, cabal-install, pipes-attoparsec, vector, random, tf-random, stm
       , linear, gloss
       }:
       mkDerivation {
@@ -13,7 +13,7 @@ let
         version = "0.1.0.0";
         src = ./.;
         libraryHaskellDepends = [
-          attoparsec attoparsec-binary base bytestring data-binary-ieee754 random stm linear gloss
+          attoparsec attoparsec-binary base bytestring data-binary-ieee754 random tf-random stm linear gloss
         ] ++ (with pkgs.darwin.apple_sdk.frameworks; [ AGL Cocoa Foundation CoreData AppKit ]);
         buildTools = [ cabal-install ];
         homepage = "http://www.github.com/n-heptane-lab/bad-idea";

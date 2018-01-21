@@ -146,20 +146,34 @@ h (Neuron weights bias _ _) inputs = ((dot inputs weights) + bias)
 d_w_i :: Neuron -> (Vector Float, Float) -> Int -> Float
 d_w_i neuron (inputs, target) i =
   let err = (target - (evalNeuron neuron inputs))
-      sp  = 1 -- (activationFunction' neuron) (h neuron inputs)
+      sp  = (activationFunction' neuron) (h neuron inputs)
       dwi = err * sp * (inputs ! i)
   in {- trace ("i = " ++ show i ++" err = " ++ show err ++ " sp = " ++ show sp ++ " input = " ++ (show $ inputs ! i) ++ " dwi = " ++ show dwi) -} dwi
 
 d_b :: Neuron -> (Vector Float, Float) -> Float
 d_b neuron (inputs, target) =
   let err = (target - (evalNeuron neuron inputs))
-      sp = 1 -- (activationFunction' neuron) (h neuron inputs)
+      sp = (activationFunction' neuron) (h neuron inputs)
       db =  err * sp
   in {- trace ("err = " ++ show err ++ " sp = " ++ show sp ++ " db = " ++ show db) -} db
 
-deltaRule neuron (inputs, target) i =
-  let alpha = 0.1
-  in alpha * sigmoid' (z neuron inputs) * inputs!i
+
+d_w_v :: Neuron -> (Vector Float, Float) -> Vector Float
+d_w_v neuron (inputs, target) =
+  let err = (target - (evalNeuron neuron inputs))
+      sp  = (activationFunction' neuron) (h neuron inputs)
+      dw  = err * sp *^ inputs
+  in dw
+
+trainDeltaV :: (Vector Float, Float) -> Neuron -> Neuron
+trainDeltaV (inputs, target) neuron =
+  let weights' = updateWeights (weights neuron)
+      bias'    = updateBias (bias neuron)
+  in neuron { weights = weights', bias = bias' }
+  where
+    alpha = 0.4
+    updateWeights w = w ^+^ alpha *^ (d_w_v neuron (inputs, target))
+    updateBias b   = b + alpha   * (d_b   neuron (inputs, target))
 
 trainDelta :: (Vector Float, Float) -> Neuron -> Neuron
 trainDelta (inputs, target) neuron =
@@ -167,7 +181,7 @@ trainDelta (inputs, target) neuron =
       bias'    = updateBias (bias neuron)
   in neuron { weights = weights', bias = bias' }
   where
-    alpha = 0.05
+    alpha = 0.4
     updateWeight i w = w + alpha * (d_w_i neuron (inputs, target) i)
     updateBias b     = b + alpha   * (d_b   neuron (inputs, target))
 
@@ -187,13 +201,29 @@ trainDeltaBatch' neuron (inputs, target) =
     updateWeight i w = (d_w_i neuron (inputs, target) i)
     updateBias b     = (d_b neuron (inputs, target))
 
+trainDeltaBatchV' :: Neuron -> (Vector Float, Float) -> (Vector Float, Float)
+trainDeltaBatchV' neuron (inputs, target) =
+  let {- lr = 0.01 -- 0.005
+      guess = evalNeuron neuron input
+      err   = target - guess
+      weights' = (weights neuron) ^+^ (input ^* (err * lr))
+      bias' = (bias neuron) + (err * lr)
+      -}
+      weights' = updateWeights (weights neuron)
+      bias' = updateBias (bias neuron)
+  in (weights', bias')
+  where
+--    alpha = 0.01
+    updateWeights w = (d_w_v neuron (inputs, target))
+    updateBias b   = (d_b neuron (inputs, target))
+
 trainDeltaBatch :: [(Vector Float, Float)] -> Neuron -> Neuron
 trainDeltaBatch trainingData neuron =
   let (weights'', biases) = unzip (map (trainDeltaBatch' neuron) trainingData)
       alpha = 0.3
       weight_avg = ((sumV weights''))  ^/ (fromIntegral $ length weights'')
-      weights' = (weights neuron) ^+^ (alpha *^ ((sumV weights'') ^/ (fromIntegral $ length weights'')))-- (weights neuron) ^+^ (0.1 *^ (sumV weights))
-      bias' = (bias neuron) + (alpha * ((sum biases) / (fromIntegral $ length  biases)))
+      weights'   = (weights neuron) ^+^ (alpha *^ ((sumV weights'') ^/ (fromIntegral $ length weights'')))-- (weights neuron) ^+^ (0.1 *^ (sumV weights))
+      bias'      = (bias neuron) + (alpha * ((sum biases) / (fromIntegral $ length  biases)))
   in trace ("weight_avg = " ++ show weight_avg) $ neuron { weights = weights'
             , bias = bias'
             }
@@ -394,7 +424,7 @@ update delta w =
 updateDelta :: Float -> World -> World
 updateDelta delta w =
   if isTraining w then
-    let n' = trainDelta ((trainingData w)!!(index w)) (neuron w)
+    let n' = trainDeltaV ((trainingData w)!!(index w)) (neuron w)
         c = quadratic_cost n' (trainingData w)
     in trace ("weights = " ++ show (weights n') ++ " bias = " ++ show (bias n') ++ " c = " ++ show c) $
        w { neuron = n'
@@ -451,3 +481,10 @@ data Layer = Layer
 type Brain = Vector Layer
 -}
 
+{-
+
+deltaRule neuron (inputs, target) i =
+  let alpha = 0.1
+  in alpha * sigmoid' (z neuron inputs) * inputs!i
+
+-}

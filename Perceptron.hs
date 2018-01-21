@@ -7,7 +7,7 @@ import Graphics.Gloss hiding (Vector)
 import Graphics.Gloss.Interface.Pure.Game hiding (Vector)
 import Linear.Algebra (mult)
 import Linear.Metric (dot)
-import Linear.Vector (sumV, (^+^),(^*) )
+import Linear.Vector (sumV, (^+^), (^-^), (^*), (*^),(^/))
 import Linear.Matrix ((!*))
 import System.Environment
 import System.Exit (exitSuccess)
@@ -29,25 +29,196 @@ mkPerceptron numInputs =
   do gen <- newStdGen
      let weights' = take numInputs $ randomRs (-0.1, 0.1) gen
          bias = 0
-     return $ Neuron (Vector.fromList weights') bias heavisideStep
+     return $ Neuron (Vector.fromList weights') bias heavisideStep -- id -- sigmoid -- heavisideStep --
+
+
+mkLinearPerceptron :: Int -> IO Neuron
+mkLinearPerceptron numInputs =
+  do gen <- newStdGen
+     let weights' = take numInputs $ randomRs (-0.1, 0.1) gen
+         bias = 0
+     return $ Neuron (Vector.fromList weights') bias id -- sigmoid -- heavisideStep --
 
 heavisideStep :: Float -> Float
 heavisideStep x
   | x < 0     = (-1)
   | otherwise = 1
 
+sigmoid :: Float -> Float
+sigmoid z =
+  (1.0 / (1.0 + exp (-z))
+
+sigmoid' :: Float -> Float
+sigmoid' z = (sigmoid z) * (1 - sigmoid z)
+
+z :: Neuron -> Vector Float -> Float
+z (Neuron weights bias _) inputs = ((dot inputs weights) + bias)
+
+a :: Neuron -> Vector Float -> Float
+a = evalNeuron
+
 evalNeuron :: Neuron -> Vector Float -> Float
-evalNeuron (Neuron weights bias activationFunction) inputs =
-  activationFunction ((dot inputs weights) + bias)
+evalNeuron n@(Neuron weights bias activationFunction) inputs =
+  activationFunction (z n inputs)
+--  activationFunction ((dot inputs weights) + bias)
 
 train :: (Vector Float, Float) -> Neuron -> Neuron
 train (input, target) neuron =
-  let lr = 1 -- 0.005
+  let lr = 0.01 -- 0.005
       guess = evalNeuron neuron input
       err   = target - guess
       weights' = (weights neuron) ^+^ (input ^* (err * lr))
       bias' = (bias neuron) + (err * lr)
   in neuron { weights = weights', bias = bias' }
+
+-- The 1/2 just makes it easier to calculate the derivative of the cost later
+-- since we multiple by a learning rate anyway, might as well have the 1/2 here to simplify things
+cost :: Float -> Float -> Float
+cost target current = (1/2) * (target - current) ^ 2
+
+
+cost0 :: Neuron -> (Vector Float, Float) -> Float
+cost0 neuron (inputs, y) =
+  let a' = a neuron inputs
+  in cost y a'
+
+
+
+𝛿C0_𝛿a neuron (inputs, y) = 2 * (a neuron inputs - y)
+
+𝛿C_𝛿a neuron trainingData =
+  (sum (map (𝛿C0_𝛿a neuron) trainingData)) / (fromIntegral$ length trainingData)
+
+𝛿a_𝛿z neuron (inputs, y) = sigmoid' (z neuron inputs)
+
+-- 𝛿z_𝛿w neuron (inputs, y) = a neuron inputs
+𝛿z_𝛿w neuron (inputs, y) = inputs
+
+𝛿z_𝛿b neuron (inputs, y) = 1
+
+𝛿z_𝛿wk neuron (inputs, y) k = (inputs!k)
+
+𝛿C0_𝛿wk :: Neuron -> Int -> (Vector Float, Float) -> Float
+𝛿C0_𝛿wk neuron k x@(input, y) = (𝛿z_𝛿wk neuron x k) * (𝛿a_𝛿z neuron x) * (𝛿C0_𝛿a neuron x)
+
+𝛿C_𝛿wk :: Neuron -> [(Vector Float, Float)] -> Int -> Float
+𝛿C_𝛿wk neuron trainingData k =
+  sum (map (𝛿C0_𝛿wk neuron k) trainingData) / (fromIntegral (length trainingData))
+
+𝛿C0_𝛿b :: Neuron -> (Vector Float, Float) -> Float
+𝛿C0_𝛿b neuron x@(input, y) = (𝛿z_𝛿b neuron x) * (𝛿a_𝛿z neuron x) * (𝛿C0_𝛿a neuron x)
+
+𝛿C_𝛿b :: Neuron -> [(Vector Float, Float)] -> Float
+𝛿C_𝛿b neuron trainingData =
+  sum (map (𝛿C0_𝛿b neuron) trainingData) / (fromIntegral (length trainingData))
+
+--  (𝛿z_𝛿wk neuron x k) * (𝛿a_𝛿z neuron x) * (𝛿C0_𝛿a neuron x)
+{-
+𝛿C0_𝛿w neuron x = (𝛿z_𝛿w neuron x) * (𝛿a_𝛿z neuron x) * (𝛿C0_𝛿a neuron x)
+
+𝛿C0_𝛿w neuron trainingData =
+  let n = length trainingData
+  in sum (map (𝛿C0_𝛿w neuron) trainingData) / n
+-}
+
+-- * Delta Rule
+-- https://en.wikipedia.org/wiki/Delta_rule
+
+
+-- error for a single neuron and a single training data point
+e :: Neuron -> (Vector Float, Float) -> Float
+e neuron (inputs, target) = 0.5 * (target - (evalNeuron neuron inputs)) ^ 2
+
+h :: Neuron -> Vector Float -> Float
+h (Neuron weights bias _ ) inputs = ((dot inputs weights) + bias)
+
+-- change in error with respect to change in a specific weight
+-- dE_dwi :: Neuron -> (Vector Float, Float) -> Float
+
+d_w_i :: Neuron -> (Vector Float, Float) -> Int -> Float
+d_w_i neuron (inputs, target) i =
+  let err = (target - (evalNeuron neuron inputs))
+      sp  = sigmoid' (h neuron inputs)
+      dwi = err * sp * (inputs ! i)
+  in {- trace ("i = " ++ show i ++" err = " ++ show err ++ " sp = " ++ show sp ++ " input = " ++ (show $ inputs ! i) ++ " dwi = " ++ show dwi) -} dwi
+
+d_b :: Neuron -> (Vector Float, Float) -> Float
+d_b neuron (inputs, target) =
+  let err = (target - (evalNeuron neuron inputs))
+      sp = sigmoid' (h neuron inputs)
+      db =  err * sp
+  in {- trace ("err = " ++ show err ++ " sp = " ++ show sp ++ " db = " ++ show db) -} db
+
+deltaRule neuron (inputs, target) i =
+  let alpha = 0.1
+  in alpha * sigmoid' (z neuron inputs) * inputs!i
+
+trainDelta :: (Vector Float, Float) -> Neuron -> Neuron
+trainDelta (inputs, target) neuron =
+  let weights' = Vector.imap updateWeight (weights neuron)
+      bias'    = updateBias (bias neuron)
+  in neuron { weights = weights', bias = bias' }
+  where
+    alpha = 0.001
+    updateWeight i w = w + alpha * (d_w_i neuron (inputs, target) i)
+    updateBias b     = b + alpha   * (d_b   neuron (inputs, target))
+
+trainDeltaBatch' :: Neuron -> (Vector Float, Float) -> (Vector Float, Float)
+trainDeltaBatch' neuron (inputs, target) =
+  let {- lr = 0.01 -- 0.005
+      guess = evalNeuron neuron input
+      err   = target - guess
+      weights' = (weights neuron) ^+^ (input ^* (err * lr))
+      bias' = (bias neuron) + (err * lr)
+      -}
+      weights' = Vector.imap updateWeight (weights neuron)
+      bias' = updateBias (bias neuron)
+  in (weights', bias')
+  where
+--    alpha = 0.01
+    updateWeight i w = (d_w_i neuron (inputs, target) i)
+    updateBias b     = (d_b neuron (inputs, target))
+
+trainDeltaBatch :: [(Vector Float, Float)] -> Neuron -> Neuron
+trainDeltaBatch trainingData neuron =
+  let (weights'', biases) = unzip (map (trainDeltaBatch' neuron) trainingData)
+      weight_avg = ((sumV weights''))  ^/ (fromIntegral $ length weights'')
+      weights' = (weights neuron) ^-^ (0.5 *^ ((sumV weights'') ^/ (fromIntegral $ length weights'')))-- (weights neuron) ^+^ (0.1 *^ (sumV weights))
+      bias' = (bias neuron) - (0.5 * ((sum biases) / (fromIntegral $ length  biases)))
+  in trace ("weight_avg = " ++ show weight_avg) $ neuron { weights = weights'
+            , bias = bias'
+            }
+
+
+quadratic_cost_1 :: Neuron -> (Vector Float, Float) -> Float
+quadratic_cost_1 neuron (inputs, target) =
+  let guess = evalNeuron neuron inputs
+  in cost target guess -- (target - guess) ^ 2
+
+quadratic_cost :: Neuron -> [(Vector Float, Float)] -> Float
+quadratic_cost neuron training =
+  let len = fromIntegral (length training)
+  in (sum (map (cost0 neuron) training)) / (2 * len)
+
+trainCost :: Neuron -> [(Vector Float, Float)] -> Neuron
+trainCost neuron trainingData =
+  let weights' = Vector.imap trainWeight (weights neuron)
+      bias' = trainBias (bias neuron)
+  in neuron { weights = weights'
+            , bias    = bias'
+            }
+  where
+    trainingRate = 0.4
+
+    trainWeight :: Int -> Float -> Float
+    trainWeight k w = w - trainingRate * (𝛿C_𝛿wk neuron trainingData k)
+
+    trainBias :: Float -> Float
+    trainBias b = b - trainingRate * (𝛿C_𝛿b neuron trainingData)
+
+
+-- cost_derivative :: Float -> Float -> Float
+-- cost_derivative
 
 p0 = Neuron (Vector.fromList [6, 2, 2]) (-3) heavisideStep
 p1 = Neuron (Vector.fromList [6, 2, 2]) 5 heavisideStep
@@ -107,7 +278,7 @@ render (World neuron trainingData index _) =
     renderTd :: (Vector Float, Float) -> Int -> Picture
     renderTd (inputs, expected) i =
       let guessed = evalNeuron neuron inputs
-          c = if (i == index) then blue else (if guessed == expected then green else red)
+          c = if (i == index) then blue else (if (abs (expected - guessed)) < 0.1 then green else red)
           xc = toCoord (inputs ! 0)
           yc = toCoord (inputs ! 1)
       in color c $
@@ -117,7 +288,7 @@ render (World neuron trainingData index _) =
                else drawX
 
 fps :: Int
-fps = 120
+fps = 60
 
 data World = World
  { neuron :: Neuron
@@ -129,11 +300,21 @@ data World = World
 initialState :: IO World
 initialState =
   do n <- mkPerceptron 2
-     g <- newStdGen
+     g  <- newStdGen
      g' <- newStdGen
      let xs = randomRs (-1, 1::Float) g
          ys = randomRs (-1, 1::Float) g'
-         td = take 150 $ zipWith (\x y -> (Vector.fromList [x, y], if (y > -(0.5*x) + 0.3) then 1 else -1)) xs ys
+         td = take 50 $ zipWith (\x y -> (Vector.fromList [x, y], if (y > -(0.5*x) + 0.3) then 1 else -1)) xs ys
+     pure $ World n td 0 False
+
+initialStateLinear :: IO World
+initialStateLinear =
+  do n <- mkLinearPerceptron 2
+     g  <- newStdGen
+     g' <- newStdGen
+     let xs = randomRs (-1, 1::Float) g
+         ys = randomRs (-1, 1::Float) g'
+         td = take 50 $ zipWith (\x y -> (Vector.fromList [x, y], if (y > -(0.5*x) + 0.3) then 1 else -1)) xs ys
      pure $ World n td 0 False
 
 andState :: IO World
@@ -181,10 +362,47 @@ update :: Float -> World -> World
 update delta w =
   if isTraining w then
     let n' = train ((trainingData w)!!(index w)) (neuron w)
-    in trace (show $ (bias n', weights n')) $ w { neuron = n'
+        c = quadratic_cost n' (trainingData w)
+    in trace (show c) $ w { neuron = n'
          , index = ((index w) + 1) `mod` (length (trainingData w))
          , isTraining = not (isTrainingComplete n' (trainingData w))
          }
+  else w
+
+
+-- online vs batch updates?
+updateDelta :: Float -> World -> World
+updateDelta delta w =
+  if isTraining w then
+    let n' = trainDelta ((trainingData w)!!(index w)) (neuron w)
+        c = quadratic_cost n' (trainingData w)
+    in trace ("weights = " ++ show (weights n') ++ " bias = " ++ show (bias n') ++ " c = " ++ show c) $
+       w { neuron = n'
+         , index = ((index w) + 1) `mod` (length (trainingData w))
+         }
+  else w
+
+
+updateDeltaBatch :: Float -> World -> World
+updateDeltaBatch delta w =
+  if isTraining w then
+    let n' = trainDeltaBatch (trainingData w) (neuron w)
+        c = quadratic_cost n' (trainingData w)
+    in trace ("weights = " ++ show (weights n') ++ " bias = "++ show (bias n') ++ " c = " ++ show c) $ w { neuron = n'
+--                          , index = ((index w) + 1) `mod` (length (trainingData w))
+                          }
+  else w
+
+updateCost :: Float -> World -> World
+updateCost delta w =
+  if isTraining w then
+    let n' = trainCost (neuron w) (trainingData w)
+        c = quadratic_cost n' (trainingData w)
+        dc = 𝛿C_𝛿a (neuron w) (trainingData w)
+    in trace (show (c, dc)) $
+         w { neuron = n'
+--           , isTraining = not (isTrainingComplete n' (trainingData w))
+           }
   else w
 
 
@@ -192,8 +410,8 @@ main :: IO ()
 main =
   do print $ evalNeuron p0 inputs0
      print $ evalNeuron p1 inputs0
-     world <- xorState
-     play window background fps world render handleInput update
+     world <- initialStateLinear
+     play window background fps world render handleInput updateDelta
 
 {-
   let n' = foldr train (neuron w) (trainingData w)
@@ -212,3 +430,4 @@ data Layer = Layer
 
 type Brain = Vector Layer
 -}
+

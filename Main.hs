@@ -14,7 +14,11 @@ import System.Random (randomIO)
 main :: IO ()
 main =
   do [fp] <- getArgs
-     h <- openFile fp ReadMode
+     train fp
+
+train :: FilePath -> IO ()
+train fp =
+  do h <- openFile fp ReadMode
      bs <- hGetSome h 4
      case parse magicWord bs of
       (Done _ (size, dims)) ->
