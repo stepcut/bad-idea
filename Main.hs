@@ -1,19 +1,74 @@
+{-# LANGUAGE DataKinds #-}
 module Main where
 
 import Control.Monad (replicateM)
 -- import Control.Concurrent.STM
-import Data.Attoparsec.ByteString(IResult(..), parse)
+import Data.Attoparsec.ByteString(IResult(..), parseOnly)
 import Data.ByteString (hGetSome)
+import qualified Data.ByteString as BS
 import Data.MNIST
-import Data.Vector (Vector)
+import Data.Word (Word8)
+import Data.Vector (Vector, (!))
+import qualified Data.Vector.Unboxed as U
 import qualified Data.Vector as Vector
+import Graphics.Gloss hiding (Vector)
+import Graphics.Gloss.Interface.Pure.Game hiding (Vector)
 import System.Environment
 import System.IO (openFile, IOMode(ReadMode))
 import System.Random (randomIO)
 
+windowRadius = 800
+
+window :: Display
+window = InWindow "bad idea" (windowRadius,windowRadius) (10,10)
+
+background :: Color
+background = white
+
+fps :: Int
+fps = 20
+
+data World = World
+ { index  :: Int
+ , lbls   :: MNIST UnsignedByte 1
+ , digits :: MNIST UnsignedByte 3
+ }
+ deriving Show
+
+handleInput :: Event -> World -> World
+handleInput _ w = w
+
+update :: Float -> World -> World
+update delta w = w { index = ((index w + 1) `mod` 60000) }
+
+render :: World -> Picture
+render (World i (UnsignedByteV1 _ lbls) (UnsignedByteV3 _ digits)) =
+   pictures [ translate 0 (200) $ text        (show i)
+            , translate 0 (100) $ text        (show (lbls U.! i))
+--            , scale 4 4         $ renderDigit (digits ! i)
+            ]
+  where
+    grey' :: Word8 -> Color
+    grey' w = greyN $ 1 - ((fromIntegral w) / 255)
+    renderDigit :: Vector (Vector Word8) -> Picture
+    renderDigit digit = pictures $
+      do x <- [0..27]
+         y <- [0..27]
+         pure $ translate x (-y) $ color (grey' (digit ! (truncate y) ! (truncate x))) $ circleSolid 0.5
+
+
 main :: IO ()
 main =
-  do [fp] <- getArgs
+  do putStrLn "Parsing..."
+     lblsFP <- BS.readFile "train-labels-idx1-ubyte"
+     let (Right lbls) = parseOnly pMNISTUnsignedByteV1 lblsFP
+     digitsFP <- BS.readFile "train-images-idx3-ubyte"
+     case parseOnly pMNISTUnsignedByteV3 digitsFP of
+       (Right digits) ->
+         do let world = World 0 lbls digits
+            play window background fps world render handleInput update
+
+{-
      train fp
 
 train :: FilePath -> IO ()
@@ -26,7 +81,7 @@ train fp =
            case parse (sizes dims) bs of
             (Done _ szs) ->
               do print (size, dims, szs)
-
+-}
 data Network = Network
   { biases :: Vector Double
   , weights :: Vector (Vector (Vector Double))
