@@ -26,7 +26,7 @@ background :: Color
 background = white
 
 fps :: Int
-fps = 20
+fps = 5
 
 data World = World
  { index  :: Int
@@ -45,16 +45,17 @@ render :: World -> Picture
 render (World i (UnsignedByteV1 _ lbls) (UnsignedByteV3 _ digits)) =
    pictures [ translate 0 (200) $ text        (show i)
             , translate 0 (100) $ text        (show (lbls U.! i))
---            , scale 4 4         $ renderDigit (digits ! i)
+            , scale 4 4         $ renderDigit (digits ! i)
             ]
   where
     grey' :: Word8 -> Color
     grey' w = greyN $ 1 - ((fromIntegral w) / 255)
-    renderDigit :: Vector (Vector Word8) -> Picture
+    renderDigit :: U.Vector Word8 -> Picture
     renderDigit digit = pictures $
       do x <- [0..27]
          y <- [0..27]
-         pure $ translate x (-y) $ color (grey' (digit ! (truncate y) ! (truncate x))) $ circleSolid 0.5
+         pure $ translate x (-y) $ color (grey' (digit U.! (((truncate y) * 28) + (truncate x)))) $ circleSolid 0.5
+--         pure $ translate x (-y) $ color (grey' (digit ! (truncate y) U.! (truncate x))) $ circleSolid 0.5
 
 
 main :: IO ()

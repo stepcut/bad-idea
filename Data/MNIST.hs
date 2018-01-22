@@ -9,6 +9,7 @@ import Control.DeepSeq
 -- import Data.Attoparsec
 import Data.Attoparsec.Binary
 import Data.Attoparsec.ByteString
+import Data.Attoparsec.Combinator
 import Data.Int (Int32)
 import Data.Word
 import Data.Vector (Vector, fromList)
@@ -33,7 +34,8 @@ data MagicWord = MagicWord
 data family MNIST (dataType :: DataType) (dim :: Nat) :: *
 data instance MNIST UnsignedByte 1 = UnsignedByteV1  Word32  !(U.Vector Word8) deriving Show
 -- data instance MNIST UnsignedByte 2 = UnsignedByteV2 (Word32, Word32) (Vector (U.Vector Word8)) deriving Show
-data instance MNIST UnsignedByte 3 = UnsignedByteV3 !(Word32, Word32, Word32) !(Vector (Vector (U.Vector Word8))) deriving Show
+-- data instance MNIST UnsignedByte 3 = UnsignedByteV3 !(Word32, Word32, Word32) !(Vector (Vector (U.Vector Word8))) deriving Show
+data instance MNIST UnsignedByte 3 = UnsignedByteV3 !(Word32, Word32, Word32) !(Vector (U.Vector Word8)) deriving Show
 
 pDataType :: Parser DataType
 pDataType =
@@ -77,6 +79,8 @@ pMNISTUnsignedByteV2 =
                pure $ UnsignedByteV2 (size0, size1) ds
        else error "unexpected data type or dimension"
 -}
+
+{-
 pMNISTUnsignedByteV3 :: Parser (MNIST UnsignedByte 3)
 pMNISTUnsignedByteV3 =
   do (MagicWord dt dims) <- pMagicWord
@@ -85,16 +89,27 @@ pMNISTUnsignedByteV3 =
                ds <- pUnsignedByteV3 size0 size1 size2 <* endOfInput
                pure $ UnsignedByteV3 (size0, size1, size2) (force ds)
        else error "unexpected data type or dimension"
+-}
+
+pMNISTUnsignedByteV3 :: Parser (MNIST UnsignedByte 3)
+pMNISTUnsignedByteV3 =
+  do (MagicWord dt dims) <- pMagicWord
+     if (dt == UnsignedByte) && (dims == 3)
+       then do [size0, size1, size2] <- pSizes dims
+--                ds <- pUnsignedByteV3 size0 size1 size2 <* endOfInput
+               ds <- fromList <$> count (fromIntegral size0) (pUnsignedByteV1 (size1 * size2))
+               pure $ UnsignedByteV3 (size0, size1, size2) (force ds)
+       else error "unexpected data type or dimension"
 
 pUnsignedByteV1 :: Word32 -> Parser (U.Vector Word8)
 pUnsignedByteV1 c =
-  (fmap (force . U.fromList)) $! replicateM (fromIntegral c) anyWord8
+  (fmap (force . U.fromList)) $! count (fromIntegral c) anyWord8
 
 pUnsignedByteV2 :: Word32 -> Word32 -> Parser (Vector (U.Vector Word8))
 pUnsignedByteV2 x y =
-  (fmap (force . fromList)) $! replicateM (fromIntegral x) (pUnsignedByteV1 y)
+  (fmap (force . fromList)) $! count (fromIntegral x) (pUnsignedByteV1 y)
 
 pUnsignedByteV3 :: Word32 -> Word32 -> Word32 -> Parser (Vector (Vector (U.Vector Word8)))
 pUnsignedByteV3 x y z =
-  (fmap (force . fromList)) $! replicateM (fromIntegral x) (pUnsignedByteV2 y z)
+  (fmap (force . fromList)) $! count (fromIntegral x) (pUnsignedByteV2 y z)
 
