@@ -3,9 +3,10 @@ module Main where
 
 import Control.Monad (replicateM)
 -- import Control.Concurrent.STM
-import Data.Attoparsec.ByteString.Lazy (Result(..), parse)
+import Data.Attoparsec.ByteString (Result(..), IResult(..), parse, parseWith)
 import Data.ByteString (hGetSome)
-import qualified Data.ByteString.Lazy as BS
+import qualified Data.ByteString as BS
+-- import qualified Data.ByteString.Lazy as BS
 import Data.MNIST
 import Data.Word (Word8)
 import Data.Vector (Vector, (!))
@@ -26,7 +27,7 @@ background :: Color
 background = white
 
 fps :: Int
-fps = 5
+fps = 60
 
 data World = World
  { index  :: Int
@@ -63,8 +64,10 @@ main =
   do putStrLn "Parsing..."
      lblsFP <- BS.readFile "train-labels-idx1-ubyte"
      let (Done _ lbls) = parse pMNISTUnsignedByteV1 lblsFP
-     digitsFP <- BS.readFile "train-images-idx3-ubyte"
-     case parse pMNISTUnsignedByteV3 digitsFP of
+--     digitsFP <- BS.readFile "train-images-idx3-ubyte"
+     h <- openFile "train-images-idx3-ubyte" ReadMode
+     r <- parseWith (hGetSome h 1) pMNISTUnsignedByteV3 mempty
+     case r of
        (Done _ digits) ->
          do let world = World 0 lbls digits
 --            putStrLn "Waiting.."

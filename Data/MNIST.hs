@@ -11,6 +11,7 @@ import Data.Attoparsec.Binary
 import Data.Attoparsec.ByteString
 import Data.Attoparsec.Combinator
 import Data.Int (Int32)
+import Data.Char
 import Data.Word
 import Data.Vector (Vector, fromList)
 import qualified Data.Vector.Unboxed as U
@@ -103,7 +104,7 @@ pMNISTUnsignedByteV3 =
 
 pUnsignedByteV1 :: Word32 -> Parser (U.Vector Word8)
 pUnsignedByteV1 c =
-  (fmap (force . U.fromList)) $! count (fromIntegral c) anyWord8
+  (fmap (force . U.fromList)) $! count (fromIntegral c) (anyWord8) -- anyWord8
 
 pUnsignedByteV2 :: Word32 -> Word32 -> Parser (Vector (U.Vector Word8))
 pUnsignedByteV2 x y =
