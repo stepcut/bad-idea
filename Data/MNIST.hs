@@ -5,6 +5,7 @@
 module Data.MNIST where
 
 import Control.Monad
+import Control.DeepSeq
 -- import Data.Attoparsec
 import Data.Attoparsec.Binary
 import Data.Attoparsec.ByteString
@@ -81,19 +82,19 @@ pMNISTUnsignedByteV3 =
   do (MagicWord dt dims) <- pMagicWord
      if (dt == UnsignedByte) && (dims == 3)
        then do [size0, size1, size2] <- pSizes dims
-               ds <- pUnsignedByteV3 size0 size1 size2
-               pure $ UnsignedByteV3 (size0, size1, size2) ds
+               ds <- pUnsignedByteV3 size0 size1 size2 <* endOfInput
+               pure $ UnsignedByteV3 (size0, size1, size2) (force ds)
        else error "unexpected data type or dimension"
 
 pUnsignedByteV1 :: Word32 -> Parser (U.Vector Word8)
 pUnsignedByteV1 c =
-  (fmap U.fromList) $! replicateM (fromIntegral c) anyWord8
+  (fmap (force . U.fromList)) $! replicateM (fromIntegral c) anyWord8
 
 pUnsignedByteV2 :: Word32 -> Word32 -> Parser (Vector (U.Vector Word8))
 pUnsignedByteV2 x y =
-  (fmap fromList) $! replicateM (fromIntegral x) (pUnsignedByteV1 y)
+  (fmap (force . fromList)) $! replicateM (fromIntegral x) (pUnsignedByteV1 y)
 
 pUnsignedByteV3 :: Word32 -> Word32 -> Word32 -> Parser (Vector (Vector (U.Vector Word8)))
 pUnsignedByteV3 x y z =
-  (fmap fromList) $! replicateM (fromIntegral x) (pUnsignedByteV2 y z)
+  (fmap (force . fromList)) $! replicateM (fromIntegral x) (pUnsignedByteV2 y z)
 

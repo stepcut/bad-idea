@@ -3,9 +3,9 @@ module Main where
 
 import Control.Monad (replicateM)
 -- import Control.Concurrent.STM
-import Data.Attoparsec.ByteString(IResult(..), parseOnly)
+import Data.Attoparsec.ByteString.Lazy (Result(..), parse)
 import Data.ByteString (hGetSome)
-import qualified Data.ByteString as BS
+import qualified Data.ByteString.Lazy as BS
 import Data.MNIST
 import Data.Word (Word8)
 import Data.Vector (Vector, (!))
@@ -61,11 +61,14 @@ main :: IO ()
 main =
   do putStrLn "Parsing..."
      lblsFP <- BS.readFile "train-labels-idx1-ubyte"
-     let (Right lbls) = parseOnly pMNISTUnsignedByteV1 lblsFP
+     let (Done _ lbls) = parse pMNISTUnsignedByteV1 lblsFP
      digitsFP <- BS.readFile "train-images-idx3-ubyte"
-     case parseOnly pMNISTUnsignedByteV3 digitsFP of
-       (Right digits) ->
+     case parse pMNISTUnsignedByteV3 digitsFP of
+       (Done _ digits) ->
          do let world = World 0 lbls digits
+--            putStrLn "Waiting.."
+--            getLine
+            pure ()
             play window background fps world render handleInput update
 
 {-
