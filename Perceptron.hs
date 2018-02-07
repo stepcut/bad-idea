@@ -8,7 +8,7 @@ import Graphics.Gloss.Interface.Pure.Game hiding (Vector)
 import Linear.Algebra (mult)
 import Linear.Metric (dot)
 import Linear.Vector (sumV, (^+^), (^-^), (^*), (*^),(^/))
-import Linear.Matrix ((!*))
+import Linear.Matrix ((!*), transpose)
 import System.Environment
 import System.Exit (exitSuccess)
 import System.Random (newStdGen, randomIO, randomRIO, randomRs)

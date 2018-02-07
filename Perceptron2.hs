@@ -461,7 +461,7 @@ main =
   do print $ evalNeuron p0 inputs0
      print $ evalNeuron p1 inputs0
      world <- initialStateSigmoid
-     play window background fps world render handleInput updateDelta
+     play window background fps world render handleInput updateDeltaBatch
 
 {-
   let n' = foldr train (neuron w) (trainingData w)

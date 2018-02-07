@@ -14,6 +14,10 @@ import qualified Data.Vector.Unboxed as U
 import qualified Data.Vector as Vector
 import Graphics.Gloss hiding (Vector)
 import Graphics.Gloss.Interface.Pure.Game hiding (Vector)
+import Linear.Algebra (mult)
+import Linear.Metric (dot)
+import Linear.Vector (sumV, (^+^), (^-^), (^*), (*^),(^/))
+import Linear.Matrix (transpose, (!*))
 import System.Environment
 import System.IO (openFile, IOMode(ReadMode))
 import System.Random (randomIO)
@@ -27,14 +31,15 @@ background :: Color
 background = white
 
 fps :: Int
-fps = 60
+fps = 10
 
 data World = World
- { index  :: Int
- , lbls   :: MNIST UnsignedByte 1
- , digits :: MNIST UnsignedByte 3
+ { index   :: Int
+ , lbls    :: MNIST UnsignedByte 1
+ , digits  :: MNIST UnsignedByte 3
+ , network :: Network
  }
- deriving Show
+
 
 handleInput :: Event -> World -> World
 handleInput _ w = w
@@ -42,8 +47,25 @@ handleInput _ w = w
 update :: Float -> World -> World
 update delta w = w { index = ((index w + 1) `mod` 60000) }
 
+renderWeight :: Double -> Picture
+renderWeight w = color (greyN (realToFrac (((sigmoid w) + 0.5) / 2))) (circleSolid 1)
+--  color black (circleSolid 1)
+
+renderNeuron :: Vector Double -> Picture
+renderNeuron weights =
+  let w = round (sqrt (fromIntegral (Vector.length weights)))
+  in pictures [ translate (fromIntegral (i `mod` w)) (fromIntegral (i `div` w)) $ renderWeight (weights!i) | i <- [0.. pred (Vector.length weights)] ]
+
+renderLayer :: Vector (Vector Double) -> Picture
+renderLayer neurons =
+  pictures [ translate 0 (fromIntegral $ i * 30) $ renderNeuron (neurons!i) | i <- [0 .. pred (Vector.length neurons)] ]
+
+renderNetwork :: Network -> Picture
+renderNetwork (Network _ layers biases _ _) = translate (-300) (-300) $ scale 1 1 $
+  pictures [ translate (fromIntegral $ i*30) 0 $ renderLayer (layers!i) | i <- [0 .. pred (Vector.length layers)] ]
+
 render :: World -> Picture
-render (World i (UnsignedByteV1 _ lbls) (UnsignedByteV3 _ digits)) =
+render (World i (UnsignedByteV1 _ lbls) (UnsignedByteV3 _ digits) network) =
    pictures [ translate 0 (200) $ text        (show i)
             , translate 0 (100) $ text        (show (lbls U.! i))
             , scale 4 4         $ renderDigit (digits ! i)
@@ -59,22 +81,36 @@ render (World i (UnsignedByteV1 _ lbls) (UnsignedByteV3 _ digits)) =
 --         pure $ translate x (-y) $ color (grey' (digit ! (truncate y) U.! (truncate x))) $ circleSolid 0.5
 
 
-main :: IO ()
-main =
+main0 :: IO ()
+main0 =
   do putStrLn "Parsing..."
      lblsFP <- BS.readFile "train-labels-idx1-ubyte"
      let (Done _ lbls) = parse pMNISTUnsignedByteV1 lblsFP
 --     digitsFP <- BS.readFile "train-images-idx3-ubyte"
      h <- openFile "train-images-idx3-ubyte" ReadMode
      r <- parseWith (hGetSome h 1) pMNISTUnsignedByteV3 mempty
+     n <- initNetwork [6, 20, 10]
      case r of
        (Done _ digits) ->
-         do let world = World 0 lbls digits
+         do let world = World 0 lbls digits n
 --            putStrLn "Waiting.."
 --            getLine
             pure ()
             play window background fps world render handleInput update
 
+main1 :: IO ()
+main1 =
+  do n <- initNetwork [28*28, 15, 10]
+     play window background fps n renderNetwork (const id) (const id)
+
+
+main3 :: IO ()
+main3 =
+  do n <- initNetwork [3, 2]
+     print (weights n)
+     print (biases n)
+
+main = main3
 {-
      train fp
 
@@ -90,24 +126,124 @@ train fp =
               do print (size, dims, szs)
 -}
 data Network = Network
-  { biases :: Vector Double
-  , weights :: Vector (Vector (Vector Double))
+  { sizes  :: [Int]
+  , weights :: Vector (Vector (Vector Double)) -- Layer (Neuron (Weight Double))
+  , biases  :: Vector (Vector Double)
+  , activationFunction  :: Double -> Double
+  , activationFunction' :: Double -> Double
   }
-  deriving (Eq, Ord, Read, Show)
+--  deriving (Eq, Ord, Read, Show)
+{-
+testNetwork0 :: Network
+testNetwork0 = Network
+  { sizes = [3]
+  , weights = Vector.fromList (Vector.fromList 
+-}
 
+feedforward :: Network -> Vector Double -> Vector Double
+feedforward network inputs = feedforward' (zip (Vector.toList $ weights network) (Vector.toList $ biases network))  inputs
+  where
+    feedforward' :: [(Vector (Vector Double), Vector Double)] -> Vector Double -> Vector Double
+    feedforward' [] inputs = inputs
+    feedforward' ((l,b):ls) inputs = feedforward' ls (Vector.map (activationFunction network) (((l !* inputs) ^+^ b)))
 
-feedforward :: Network -> Double -> Vector Double
-feedforward network a =
- undefined
 
 initNetwork :: [Int] -> IO Network
 initNetwork szs =
-  do bs <- Vector.fromList <$> (mapM (const randomIO) (tail szs))
+  do bs <- Vector.fromList <$> (mapM (\s -> Vector.fromList <$> replicateM s randomIO) (tail szs))
      ws <- Vector.fromList <$>
        mapM (\(j,k) -> Vector.fromList <$> replicateM j (Vector.fromList <$> replicateM k randomIO)) (zip (tail szs) szs)
-     pure $ Network { biases = bs
+     pure $ Network { sizes = szs
+                    , biases = bs
                     , weights = ws
+                    , activationFunction = sigmoid
+                    , activationFunction'= sigmoid'
                     }
+
+networkAnd :: Network
+networkAnd =
+  Network { sizes = [2,1]
+          , weights = Vector.fromList [ Vector.fromList [ Vector.fromList [ 10, 10 ] ] ]
+          , biases  = Vector.fromList [ Vector.fromList [ (-12) ] ]
+          , activationFunction = sigmoid
+          , activationFunction' = sigmoid'
+          }
+
+networkNand :: Network
+networkNand =
+  Network { sizes = [2,1]
+          , weights = Vector.fromList [ Vector.fromList [ Vector.fromList [ (-10), (-10) ] ] ]
+          , biases  = Vector.fromList [ Vector.fromList [ 12 ] ]
+          , activationFunction = sigmoid
+          , activationFunction' = sigmoid'
+          }
+
+networkOr :: Network
+networkOr =
+  Network { sizes = [2,1]
+          , weights = Vector.fromList [ Vector.fromList [ Vector.fromList [ 100, 100 ] ] ]
+          , biases  = Vector.fromList [ Vector.fromList [ -90 ] ]
+          , activationFunction = sigmoid
+          , activationFunction' = sigmoid'
+          }
+
+networkXor :: Network
+networkXor =
+  Network { sizes = [2,2,1]
+          , weights = Vector.fromList [ Vector.fromList [ Vector.fromList [ (-10), (-10) ], Vector.fromList [ 100, 100 ] ]
+                                      , Vector.fromList [ Vector.fromList [ 10, 10 ] ]
+                                      ]
+          , biases  = Vector.fromList [ Vector.fromList [ 12, -90 ]
+                                      , Vector.fromList [ -12 ]
+                                      ]
+          , activationFunction = sigmoid
+          , activationFunction' = sigmoid'
+          }
+
+testNetwork :: Network -> [(Vector Double, Double)] -> IO ()
+testNetwork nn testData =
+  mapM_ (eval nn) testData
+  where
+    eval nn (inputs, expected) =
+      let guess = feedforward nn inputs
+      in putStrLn $ "inputs == " ++ show inputs ++ ", expected == " ++ show expected ++ ", guess == " ++ show guess
+
+mainAnd :: IO ()
+mainAnd =
+  do let testData = [ (Vector.fromList [0, 0], 0)
+                    , (Vector.fromList [0, 1], 0)
+                    , (Vector.fromList [1, 0], 0)
+                    , (Vector.fromList [1, 1], 1)
+                    ]
+       in testNetwork networkAnd testData
+
+mainNand :: IO ()
+mainNand =
+  do let testData = [ (Vector.fromList [0, 0], 0)
+                    , (Vector.fromList [0, 1], 0)
+                    , (Vector.fromList [1, 0], 0)
+                    , (Vector.fromList [1, 1], 1)
+                    ]
+       in testNetwork networkNand testData
+
+mainOr :: IO ()
+mainOr =
+  do let testData = [ (Vector.fromList [0, 0], 0)
+                    , (Vector.fromList [0, 1], 1)
+                    , (Vector.fromList [1, 0], 1)
+                    , (Vector.fromList [1, 1], 1)
+                    ]
+       in testNetwork networkOr testData
+
+mainXor :: IO ()
+mainXor =
+  do let testData = [ (Vector.fromList [0, 0], 0)
+                    , (Vector.fromList [0, 1], 1)
+                    , (Vector.fromList [1, 0], 1)
+                    , (Vector.fromList [1, 1], 1)
+                    ]
+       in testNetwork networkXor testData
+
 
 {-
   do bs' <- mapM (const randomIO) (tail let)
@@ -122,4 +258,5 @@ initNetwork szs =
 sigmoid z =
   1.0 / (1.0 + exp (-z))
 
-
+sigmoid' :: Double -> Double
+sigmoid' z = (sigmoid z) * (1 - sigmoid z)
