@@ -92,19 +92,19 @@ mkWorld =
 goOut :: Neuron
 goOut =  Neuron { weights = Vector.fromList [6, 2, 2]
                   , bias = (-5)
-                  , activationFunction = heavisideStep
+                  , activationFunction  = heavisideStep
                   , activationFunction' = undefined
   }
 
--- | Training function
+-- | Perceptron Training function
 train :: (Vector Float, Float) -> Neuron -> Neuron
 train (inputs, target) neuron =
-  let guess = evalNeuron neuron inputs
-      error = target - guess
+  let guess    = evalNeuron neuron inputs
+      error    = target - guess
       weights' = (weights neuron) ^+^ inputs ^* error
-      bias' = (bias neuron) + error
+      bias'    = (bias neuron) + error
   in neuron { weights = weights'
-            , bias = bias'
+            , bias    = bias'
             }
 
 -- | Training function 2
@@ -118,13 +118,13 @@ h neuron inputs = (dot inputs (weights neuron)) + (bias neuron)
 
 deltaW :: Neuron -> (Vector Float, Float) -> (Vector Float, Float)
 deltaW neuron (inputs, target) =
-  let alpha = 0.4
-      err   = target - (evalNeuron neuron inputs)
+  let alpha  = 0.4
+      err    = target - (evalNeuron neuron inputs)
       gPrime = (activationFunction' neuron) (h neuron inputs)
   in (alpha * err * gPrime *^ inputs, 0.1 * err * gPrime)
 
-trainDelta :: (Vector Float, Float) -> Neuron -> Neuron
-trainDelta td n =
+trainDeltaOnline :: (Vector Float, Float) -> Neuron -> Neuron
+trainDeltaOnline td n =
   let (dw, db) = deltaW n td
       weights' = weights n ^+^ dw
       bias'    = bias n + db
@@ -259,9 +259,9 @@ update delta world =
         }
 
 -- | time `delta` has passed, how has the `World` changed?
-updateDelta :: Float -> World -> World
-updateDelta _delta world =
-  world { neuron = trainDelta ((trainingData world)!!(index world)) (neuron world)
+updateDeltaOnline :: Float -> World -> World
+updateDeltaOnline _delta world =
+  world { neuron = trainDeltaOnline ((trainingData world)!!(index world)) (neuron world)
         , index  = ((index world) + 1) `mod` (length (trainingData world))
         }
 
@@ -271,7 +271,7 @@ main =
   do -- perceptron <t- mkPerceptron 2
      world@(World neuron trainingData _) <- sigmoidState
 --     let neuron' = trainN 20 trainingData neuron
-     play window background fps world render handleInput updateDelta
+     play window background fps world render handleInput updateDeltaOnline
 {-
      let neuron' = neuron
      putStrLn "Untrained"

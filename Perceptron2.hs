@@ -224,9 +224,10 @@ trainDeltaBatch trainingData neuron =
       weight_avg = ((sumV weights''))  ^/ (fromIntegral $ length weights'')
       weights'   = (weights neuron) ^+^ (alpha *^ ((sumV weights'') ^/ (fromIntegral $ length weights'')))-- (weights neuron) ^+^ (0.1 *^ (sumV weights))
       bias'      = (bias neuron) + (alpha * ((sum biases) / (fromIntegral $ length  biases)))
-  in trace ("weight_avg = " ++ show weight_avg) $ neuron { weights = weights'
-            , bias = bias'
-            }
+  in trace ("weight_avg = " ++ show weight_avg) $
+       neuron { weights = weights'
+              , bias = bias'
+              }
 
 
 quadratic_cost_1 :: Neuron -> (Vector Float, Float) -> Float

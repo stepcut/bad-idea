@@ -144,7 +144,7 @@ feedforward :: Network -> Vector Double -> Vector Double
 feedforward network inputs = feedforward' (zip (Vector.toList $ weights network) (Vector.toList $ biases network))  inputs
   where
     feedforward' :: [(Vector (Vector Double), Vector Double)] -> Vector Double -> Vector Double
-    feedforward' [] inputs = inputs
+    feedforward' []         inputs = inputs
     feedforward' ((l,b):ls) inputs = feedforward' ls (Vector.map (activationFunction network) (((l !* inputs) ^+^ b)))
 
 
