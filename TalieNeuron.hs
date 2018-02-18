@@ -7,7 +7,7 @@ import Graphics.Gloss hiding (Vector)
 import Graphics.Gloss.Interface.Pure.Game hiding (Vector)
 import Linear.Algebra (mult)
 import Linear.Metric (dot)
-import Linear.Vector (sumV, (^+^),(^*), (*^))
+import Linear.Vector (sumV, (^+^),(^*), (*^), (^/))
 import Linear.Matrix ((!*))
 import System.Environment
 import System.Exit (exitSuccess)
@@ -118,7 +118,7 @@ h neuron inputs = (dot inputs (weights neuron)) + (bias neuron)
 
 deltaW :: Neuron -> (Vector Float, Float) -> (Vector Float, Float)
 deltaW neuron (inputs, target) =
-  let alpha  = 0.4
+  let alpha  = 0.9
       err    = target - (evalNeuron neuron inputs)
       gPrime = (activationFunction' neuron) (h neuron inputs)
   in (alpha * err * gPrime *^ inputs, 0.1 * err * gPrime)
@@ -131,7 +131,22 @@ trainDeltaOnline td n =
   in n { weights = weights'
        , bias    = bias'
        }
-
+{-
+dws  :: [Vector Float]
+sumV :: [Vector Float] -> Vector Float
+dws_avg :: Vector Float
+bias :: [Float]
+-}
+trainDeltaBatch :: [(Vector Float, Float)] -> Neuron -> Neuron
+trainDeltaBatch tds n =
+  let (dws, dbs) = unzip (map (deltaW n) tds)
+      dws_avg    = (sumV dws) ^/ (fromIntegral (length tds))
+      dbs_avg    = sum dbs / (fromIntegral (length tds))
+      weights'   = (weights n) ^+^ dws_avg
+      bias'      = (bias n)     +  dbs_avg
+  in n { weights = weights'
+       , bias    = bias'
+       }
 
 -- | Recognize AND function
 andState :: IO World
@@ -265,13 +280,19 @@ updateDeltaOnline _delta world =
         , index  = ((index world) + 1) `mod` (length (trainingData world))
         }
 
+-- | time `delta` has passed, how has the `World` changed?
+updateDeltaBatch :: Float -> World -> World
+updateDeltaBatch _delta world =
+  world { neuron = trainDeltaBatch (trainingData world) (neuron world)
+        }
+
 -- | applications starts here
 main :: IO ()
 main =
   do -- perceptron <t- mkPerceptron 2
      world@(World neuron trainingData _) <- sigmoidState
 --     let neuron' = trainN 20 trainingData neuron
-     play window background fps world render handleInput updateDeltaOnline
+     play window background fps world render handleInput updateDeltaBatch
 {-
      let neuron' = neuron
      putStrLn "Untrained"
