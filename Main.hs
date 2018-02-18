@@ -33,10 +33,13 @@ background = white
 fps :: Int
 fps = 10
 
+type Labels = MNIST UnsignedByte 1
+type Digits = MNIST UnsignedByte 3
+
 data World = World
  { index   :: Int
- , lbls    :: MNIST UnsignedByte 1
- , digits  :: MNIST UnsignedByte 3
+ , lbls    :: Labels
+ , digits  :: Digits
  , network :: Network
  }
 
@@ -255,8 +258,31 @@ mainXor =
 -}
 --  Network { biases = 
 
+sigmoid :: Double -> Double
 sigmoid z =
   1.0 / (1.0 + exp (-z))
 
 sigmoid' :: Double -> Double
 sigmoid' z = (sigmoid z) * (1 - sigmoid z)
+
+infixl 7 ^*^
+
+(^*^) :: (Num a) => (Vector a) -> (Vector a) -> (Vector a)
+a ^*^ b = Vector.zipWith (*) a b
+
+z :: Vector (Vector Double) -> Vector -> Vector Double -> Vector Double
+z weights a bias = (weights !* a) + bias
+
+a :: (Double -> Double) -> Vector (Vector Double) -> Vector Double -> Vector Double
+a f weights a' = Vector.map f (z weights a')
+
+nabla_a_C :: Vector Double -> Vector Double -> Vector Double
+nabla_a_C target activation = target ^-^ activation
+{-
+delta_output :: (Double -> Double) -> (Double -> Double) -> Vector (Vector Double) -> Vector Double -> Vector Double -> Vector Double
+delta_output activationFunction activationFunction' weights activations targets =
+  (nabla_a_C activations targets) ^*^ (Vector.map activationFunction (z 
+-}
+
+train :: Network -> Labels -> Digits -> Network
+train network lbls digits = network
